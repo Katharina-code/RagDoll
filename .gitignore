@@ -1,0 +1,14 @@
+
+all_tracks_info.json
+audio/
+transcriptions/
+rawdata/
+code/.env
+code/__pycache__/
+code/chroma/
+code/flagged/
+code/gradio_cached_examples/
+code/pretrained_models
+
+
+
