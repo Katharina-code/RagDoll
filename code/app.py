@@ -6,17 +6,31 @@ from utils import *
 
 # Initialize the collection before launching the app
 # This ensures the collection is ready for use
-initialize_database()  
+initialize_database()
+
 
 # Create function to recognize speech from audio input
 def audio_to_text(audio):
-    print("Starting speech recognition...")  
+    """
+    Uses Google Speech Recogniser to transcribe user's audio input and passes it to the chat
+
+    Args:
+        - audio: The audio file with user's query. Must be provided.
+
+    Returns:
+        str: The transcribed text.
+
+    Raises:
+        ValueError: If the query is not recognised by the transcriber.
+        RequestError: If the transcriber did not return any results
+    """
+    print("Starting speech recognition...")
     recognizer = sr.Recognizer()
     try:
         with sr.AudioFile(audio) as source:
             audio_data = recognizer.record(source)
             text = recognizer.recognize_google(audio_data)
-            print(f"Transcribed text: {text}") 
+            print(f"Transcribed text: {text}")
             return text
     except sr.UnknownValueError:
         print("Could not understand audio.")
@@ -25,15 +39,25 @@ def audio_to_text(audio):
         print("Request to Google failed.")
         return "Could not request results from the Google Speech Recognition service."
 
+
 # Global variable to track "stopping" for custom stop button
 stop_processing = False
 
+
 # Chat function to interact with the model
 def interact_with_langchain_agent(user_input):
+    """
+    Passes user input to the langchain agent.
+    Returns agent response.
+
+    Args:
+        - user_input (str): Text input or transcribed audio query. Must be provided.
+
+    Returns:
+        str: The agent response.
+    """
     # Invoking agent
-    response = agent_executor.invoke(
-        {"input": user_input}
-    )  
+    response = agent_executor.invoke({"input": user_input})
 
     # Check for stop condition
     if stop_processing:
@@ -47,7 +71,18 @@ def interact_with_langchain_agent(user_input):
 
 # Function to handle input after submitted
 def handle_submit(text_input, audio_input, chat_history):
-    
+    """
+    Calls transcription on audo input.
+    Passes user input as text to the langchain agent function and updates chat history.
+    Returns agent response from the agent function and updates chat history.
+
+    Args:
+        - text_input/ audio_input: Text input or audio query
+        - chat_history (dict): The chat history
+
+    Returns:
+        dict: The updated chat history
+    """
     # Handling custom stop button
     global stop_processing
     stop_processing = False  # Reset the stop condition
@@ -70,14 +105,22 @@ def handle_submit(text_input, audio_input, chat_history):
 
     return chat_history, ""  # Return updated chat history
 
+
 # Function to handle custom stop button being clicked
 def stop_processing_function():
+    """
+    Custom function to stop model if caught in loop.
+    Called when stop button is clicked.
+    """
     global stop_processing
     stop_processing = True  # Set the flag to stop processing
 
 
 # Define the Gradio interface
 def create_interface():
+    """
+    Custom Gradio interface with input blocks, stop and submit button and chat layout.
+    """
     with gr.Blocks(
         css="""
         .gradio-container { background-color:  #f7ebcb; }
@@ -123,7 +166,7 @@ def create_interface():
 
         text_input.submit(
             handle_submit,
-            inputs=[text_input, audio_input, chatbot],  
+            inputs=[text_input, audio_input, chatbot],
             outputs=[chatbot, text_input],
         )
 

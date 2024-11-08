@@ -11,30 +11,24 @@ import speech_recognition as sr
 from tools import *
 from utils import *
 
-# Track results on LangSmith
+# Load API-keys from .env
 _ = load_dotenv(find_dotenv())
 
-LANGCHAIN_API_KEY = os.getenv("LANGCHAIN_API_KEY")
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-os.environ["LANGCHAIN_TRACING_V2"] = "true"
-os.environ["LANGCHAIN_ENDPOINT"] = "https://api.smith.langchain.com"
-os.environ["LANGCHAIN_PROJECT"] = "rag_doll"
-os.environ["LANGCHAIN_API_KEY"] = LANGCHAIN_API_KEY
-
 # Initialize the collection before launching the app
-client, collection = (
-    initialize_database()
-)  # This ensures the collection is ready for use
+# This ensures the collection is ready for use
+client, collection = initialize_database()
 print(globals()["collection"])
 
-# initialize LLM (we use ChatOpenAI because we'll later define a `chat` agent)
+# Initialize LLM (use ChatOpenAI or other model)
 llm = ChatOpenAI(api_key=OPENAI_API_KEY, temperature=0, model_name="gpt-4o-mini")
 
+# Rename tools
 custom_tools = tools
 
+# Create chat prompt template
 template = """
             "system",
             You are a friendly assistant called RagDoll, capable of recommending songs and answering questions about music, including transcribing lyrics. 
@@ -104,6 +98,7 @@ prompt = PromptTemplate.from_template(template)
 conversation_history = []
 
 
+# Define custom class for memory, as langchain's Conversation Memory is deprecated
 class ConversationMemoryRunnable(Runnable):
     def __init__(self, llm):
         self.llm = llm
@@ -120,6 +115,7 @@ class ConversationMemoryRunnable(Runnable):
         return self.run(input_text, **kwargs)
 
 
+# Function to retrieve session history
 def get_session_history():
     formatted_history = "\n".join(
         f"User: {entry['user']}\nAssistant: {entry['assistant']}"
@@ -128,20 +124,24 @@ def get_session_history():
     return formatted_history
 
 
+# Function to update session history
 def update_conversation_history(user_message, assistant_response):
     conversation_history.append({"user": user_message, "assistant": assistant_response})
     if len(conversation_history) > 10:  # Adjust the limit as needed
         conversation_history.pop(0)  # Remove the oldest entry
 
 
+# Add memory to the model
 llm_with_memory = ConversationMemoryRunnable(llm)
 
+# Initialise the agent
 agent = create_structured_chat_agent(
     llm=llm_with_memory,
     tools=custom_tools,
     prompt=prompt,
 )
 
+# Iitialise agent executor
 agent_executor = AgentExecutor(
     agent=agent,
     tools=custom_tools,
@@ -150,12 +150,13 @@ agent_executor = AgentExecutor(
 )
 
 
+# Create function to interact with agent through user inputs
 def chat_with_agent(user_input):
     response = agent_executor.invoke({"input": user_input})
     return response
 
 
-# To run in terminal, uncomment this block:
+# To run chat in terminal, uncomment this block:
 # while True:
 # user_prompt=input("Please ask me something: ")
 # chat_with_agent(user_prompt)

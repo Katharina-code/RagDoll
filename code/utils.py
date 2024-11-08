@@ -1,8 +1,6 @@
 import os
 import json
-import urllib.parse
 import numpy as np
-import pandas as pd
 import librosa
 import yt_dlp
 import requests
@@ -11,10 +9,24 @@ import logging
 import re
 
 
-### Downloading audio and metadata from playlist links
-# Download audio data
-def download_audio(url, download_dir, playlist_title):
+### Downloading audio and metadata from playlist links:
 
+
+# Download audio and metadata
+def download_audio(url, download_dir, playlist_title):
+    """
+    Downloads audio from a given YouTube url and converts it to mp3.
+    Downloads all metatada from the same url and saves it in json files.
+
+    Args:
+        - url (str): The download url. Must be provided.
+        - download_dir (Optional[str]): Name of the directory to download the audio data to.
+        - playlist_title (str): Name of playlist to store data under ("favourite" or "recommend")
+
+    Returns:
+        mp3: Individual audio files from the videos in the playlist
+        json: Individual metadata files from the videos in the playlist
+    """
     # Create the download directory prior to download
     os.makedirs(download_dir, exist_ok=True)
 
@@ -28,7 +40,7 @@ def download_audio(url, download_dir, playlist_title):
                 "preferredquality": "192",
             }
         ],
-        # Use playlist title in the template
+        # Use playlist title in the output directory
         "outtmpl": os.path.join(
             download_dir, playlist_title, "%(playlist_index)s - %(title)s.%(ext)s"
         ),
@@ -46,9 +58,20 @@ def download_audio(url, download_dir, playlist_title):
     )
 
 
-# Download metadata
+# Move metadata files into separate directory and remove unnecessary text
 def process_metadata(audio_dir, metadata_dir, playlist_title):
+    """
+    Processes the metatada to parse only the information that is interesting to the project.
+    Moves the individual files to a seperate directory folder
 
+    Args:
+        - audio_dir (str): Directory where the data is stored after download.
+        - metadata_dir (str): Name of the directory to move the metadata to.
+        - playlist_title (str): Name of playlist to store data under ("favourite" or "recommend")
+
+    Returns:
+        json: Individual metadata files with only relevant information
+    """
     # Create the download directory prior to download
     os.makedirs(metadata_dir, exist_ok=True)
 
@@ -92,7 +115,19 @@ def process_metadata(audio_dir, metadata_dir, playlist_title):
     )
 
 
+# Invoke download functions 
 def download_songs_and_metadata(playlist1, playlist2):
+    """
+    Function that calls on the previous two functions to download and process the audio and metadata files.
+
+    Args:
+        - playlist1 (str): First url to download = "favourites". Must be provided
+        - playlist2 (str): Second url to download = "recommend". Must be provided
+
+    Returns:
+        mp3: Individual audio files from the videos in the playlist
+        json: Individual metadata files with only relevant information
+    """
     # Specifying download folders for both playlists
     download_dir = "../rawdata/audio"
     metadata_dir = "../rawdata/metadata"
@@ -115,33 +150,44 @@ def download_songs_and_metadata(playlist1, playlist2):
     consolidate_json(metadata_directory, json_output_file)
 
 
-# Consolidate meta data into one json file per playlist
-
-
+# Consolidate metadata into one json file and parse track name and artist
 def consolidate_json(metadata_directory, json_output_file):
+    """
+    Function that consolidates all information from the individual metadata files into one json file.
+    Cleans and parses the video title for the artist and track name if none are present in the metadata.
+
+    Args:
+        - metadata_directory (str): Directory where the individual files are stored
+        - json_output_file (str): Directory where the output file should be stored
+
+    Returns:
+        json: Consolidated metadata file
+    """
     songs_data = []
     song_id = 1  # Initialize a counter for unique song IDs
 
-    # Walk through the directory to find all JSON metadata files
+    # Walk through the directory to find all json metadata files
     for root, _, files in os.walk(metadata_directory):
         for file in files:
             if not file.endswith(".info.json"):
                 continue
 
-        # Extract playlist name by getting the parent directory name of where the JSON files are located
+        # Extract playlist name by getting the parent directory name of where the json files are located
         playlist_title = os.path.basename(root)
 
+        # Iterate over each metadata file
         for file in files:
             if not file.endswith(".info.json"):
                 continue
 
-            # Exclude files with special prefixes like "00" or "000"
+            # Exclude files with prefixes "00" or "000" (playlist metadata)
             base_name = file[: -len(".info.json")]
             if base_name.startswith("00 - ") or base_name.startswith("000 "):
                 continue
 
             metadata_path = os.path.join(root, file)
 
+            # Specify which data to write into the json file
             with open(metadata_path, "r", encoding="utf-8") as meta_file:
                 metadata = json.load(meta_file)
                 artist = metadata["artist"]
@@ -179,7 +225,7 @@ def consolidate_json(metadata_directory, json_output_file):
                     artist = artist.split(",")[
                         0
                     ].strip()  # Assumes the first is the main artist
-                    artist = re.split(r"(?i)ft[.\s]|with|feat[.\s]|&", artist)[
+                    artist = re.split(r"(?i)ft[.\s]|with|feat|and[.\s]|&", artist)[
                         0
                     ].strip()  # Remove featuring artists
 
@@ -225,9 +271,17 @@ def consolidate_json(metadata_directory, json_output_file):
 
 
 # Get lyrics from Lyrics.ovh using their API
-
-
 def get_lyrics_from_lyrics_ovh(artist, title):
+    """
+    Connects to the API for lyrics.ovh and retrieves the lyrics.
+
+    Args:
+        - artist (str): Artist from the json file
+        - title (str): Track name from the json file
+
+    Returns:
+        str: Lyrics for the specified song or "Lyrics not found"
+    """
     url = f"https://api.lyrics.ovh/v1/{artist}/{title}"
     response = requests.get(url)
 
@@ -237,8 +291,20 @@ def get_lyrics_from_lyrics_ovh(artist, title):
     return "Lyrics not found"
 
 
+# Add the lyrics to the json file
 def add_lyrics(json_input_file, json_output_file):
-    # Load the consolidated JSON file
+    """
+    Function that calls on the previous function to get lyrics for a specified song.
+    Searches for the artist and track name for each song in the consolidated json file.
+
+    Args:
+        - json_input_file (str): Consolidated json file to read artist and track from
+        - json_output_file (str): Same consolidated file, but can be changed so as to not overwrite the existing file
+
+    Returns:
+        json: Consolidated metadata file updated with the lyrics
+    """
+    # Load the consolidated json file
     with open(json_input_file, "r", encoding="utf-8") as infile:
         songs_data = json.load(infile)
 
@@ -252,19 +318,27 @@ def add_lyrics(json_input_file, json_output_file):
         # Append the lyrics to song data
         song_data["lyrics"] = lyrics
 
-    # Save the updated data back to a JSON file
+    # Save the updated data back to a json file
     with open(json_output_file, "w", encoding="utf-8") as outfile:
         json.dump(songs_data, outfile, indent=4)
 
     print(f"Lyrics added to {json_output_file}")
 
 
-### Functions for song recommendations:
+### Functions for creating and populating database:
 
 
+# Function for generating song embeddings
 def generate_audio_embedding(audio_path):
     """
-    Generate embedding for audio files.
+    Function that generates embeddings for the audio files by converting to MFCCs
+    Calculates a mean vector that represents each audio file
+
+    Args:
+        - audio_path (str): Path where the audio files are stored
+
+    Returns:
+        mfccs_mean
     """
     try:
         # Load audio and compute MFCCs
@@ -278,9 +352,18 @@ def generate_audio_embedding(audio_path):
         return None
 
 
+# Find the specifc audio file by reconstructing the file path for each song audio
 def find_audio_file(audio_dir, playlist, index):
     """
-    Find the audio file in a given directory based on the playlist and index.
+    Finds the audio file in a given directory based on the playlist and index.
+
+    Args:
+        - audio_dir (str): Directory where the audio files are stored
+        - playlist (str): Name of the playlist from which the audio file comes from
+        - index (str): Index of each audio file
+
+    Returns:
+        audio_path (str): Audio path to use in above function to generate embeddings
     """
     playlist_path = os.path.join(audio_dir, playlist)
     for file in os.listdir(playlist_path):
@@ -293,7 +376,20 @@ def find_audio_file(audio_dir, playlist, index):
 # Store audio and metadata embeddings
 def store_audio_embeddings_to_chromadb(collection, audio_dir, metadata_file):
     """
-    Generate and store embeddings for each song in the metadata file to ChromaDB.
+    Calls on the previous functions to generate and store the embeddings for each song to ChromaDB.
+    Uses the audio path to find the audio files associated to each of the songs in the metadatata file.
+    Embeds the audio together with the metadata and the audio path into chroma
+
+    Args:
+        - collection: The initialised Chroma collection
+        - audio_dir (str): The directory that contains the audio files
+        - metadata_file (str): The path of the consolidated metatata file
+
+    Returns:
+        populated chroma database
+
+    Raises:
+        logging info and errors to track if database was successfully updated
     """
     try:
         # Load metadata JSON file
@@ -384,13 +480,16 @@ def store_audio_embeddings_to_chromadb(collection, audio_dir, metadata_file):
                 logging.error(f"Error storing embeddings to ChromaDB: {e}")
 
 
-# Get song embedding if a specific song is given
+### Functions for getting song recommendations:
+
+
+# Get song embedding for a specific song
 def get_song_embedding(collection, track, artist=None):
     """
     Retrieve embedding for a specific song based on track and optionally artist.
     Falls back to searching by track name only if artist is not provided or doesn't match.
 
-    Parameters:
+    Args:
         collection: The ChromaDB collection to query.
         track (str): The name of the track to find.
         artist (str, optional): The name of the artist. If not provided, it will search for the track only.
@@ -439,9 +538,20 @@ def get_song_embedding(collection, track, artist=None):
     return None
 
 
-# Calculate an average embeddings vector for favourites playlist if no song is specified
+# Calculate an average embeddings vector for entire playlist
 def get_average_embedding(collection, playlist_name):
-    # Query ChromaDB for embeddings in the "favourites" playlist
+    """
+    Retrieves embedding for all of the songs in the specified playlist.
+    Calculates average of the embeddings.
+
+    Args:
+        - collection: The ChromaDB collection to query.
+        - playlist_name (str): The name of the playlist to get embeddings for
+
+    Returns:
+        list: The average embedding of all the songs in the playlist.
+    """
+    # Query ChromaDB for embeddings in the specified playlist
     favourites_embeddings = collection.get(
         where={"playlist": playlist_name}, include=["embeddings"]
     )
@@ -469,15 +579,20 @@ def get_recommendations(
     artist=None,
 ):
     """
-    Retrieve recommendations based on either the average embedding of a playlist or a specific song.
+    Retrieves recommendations based on either the average embedding of a playlist or a specific song.
+    Calls on the previous functions to find the embedding to use as reference.
+    Compares and finds the top n closest matching embeddings.
 
-    Parameters:
+    Argss:
         - collection: The ChromaDB collection to query.
         - playlist_name: The name of the playlist to use as a reference (default is "favourites").
         - target_playlist: The name of the playlist to search for recommendations; if None, searches all playlists.
         - n_results: The number of recommendations to retrieve (default is 10).
         - track: Track name of the song to use if querying by a single song.
         - artist: Artist of the song to use if querying by a single song.
+
+    Returns:
+        json blob with the top n song and artist names
     """
     # Debug: Confirm parameters received by get_recommendations
     print(f"Received track: '{track}', artist: '{artist}'")
@@ -514,7 +629,7 @@ def get_recommendations(
     # Prepare a list to hold the formatted recommendations
     formatted_recommendations = []
 
-    # Display the recommendations without distances
+    # Display the recommendations without including distances
     for metadata in recommendations["metadatas"]:
         for item in metadata:
             song_title = item.get("track", "Unknown")
@@ -525,26 +640,29 @@ def get_recommendations(
                 {"track": song_title, "artist": song_artist}
             )
 
-    # Create a JSON blob from the list
+    # Create a json blob from the list
     recommendations_blob = {"recommendations": formatted_recommendations}
 
-    # Convert to a JSON string
+    # Convert to a json string
     json_blob = json.dumps(recommendations_blob, indent=4)  # Pretty print
 
-    # Print the JSON blob
+    # Return the json blob
     return json_blob
 
 
-# Get other song data (lyrics, artist, release year)
+### Other functions:
+
+
+# Get song metadata (lyrics, artist, release year)
 def get_song_metadata(collection, track, metadata_field, artist=None):
     """
-    Retrieve specified metadata for a given song from the ChromaDB collection.
+    Retrieves specified metadata for a given song from the ChromaDB collection.
 
-    Parameters:
-        collection: The ChromaDB collection to query.
-        track (str): The name of the track to find.
-        artist (str, optional): The name of the artist. If not provided, it will search for the track only.
-        metadata_field (str): The metadata field to retrieve (e.g., "lyrics", "artist", "release_year", etc.).
+    Args:
+        - collection: The ChromaDB collection to query.
+        - track (str): The name of the track to find.
+        - artist (str, optional): The name of the artist. If not provided, it will search for the track only.
+        - metadata_field (str): The metadata field to retrieve (e.g., "lyrics", "artist", "release_year", etc.).
 
     Returns:
         str: The requested metadata for the song, or a message if not found.
@@ -580,9 +698,20 @@ def get_song_metadata(collection, track, metadata_field, artist=None):
     return "Song not found."
 
 
-### Trasncribing lyrics from audio files:
+# Transcribe lyrics from audio files
 def transcribe_audio_file(collection, model, track, artist=None):
+    """
+    Retrieves specified metadata for a given song from the ChromaDB collection.
 
+    Args:
+        - collection: The ChromaDB collection to query.
+        - model: The model to use for transcription (in this case faster-whisper)
+        - track (str): The name of the track to transcribe.
+        - artist (str, optional): The name of the artist. If not provided, it will search for the track only.
+
+    Returns:
+        str: The transcribed lyrics stored in a .txt file.
+    """
     # Define and create the transcription directory
     transcription_dir = "../transcriptions"
     os.makedirs(transcription_dir, exist_ok=True)

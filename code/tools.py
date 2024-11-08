@@ -1,7 +1,5 @@
 from langchain.agents import Tool
-from chromadb import (
-    PersistentClient as ChromaClient,
-)  # Adjust this import based on your setup
+from chromadb import PersistentClient as ChromaClient
 import requests
 import whisper
 from faster_whisper import WhisperModel
@@ -15,6 +13,7 @@ from utils import *
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 
+# Declare global variables for client and collection to use in all subsequent functions
 client = None
 collection = None
 
@@ -37,9 +36,6 @@ def initialize_database():
         else:
             logging.info("Chroma collection initialized successfully.")
             return client, collection
-
-
-### Tool to recommend songs
 
 
 # Tool to download paylists
@@ -411,12 +407,6 @@ tools = [
     search_tool,
 ]
 
-# Let's inspect the tools
-for t in tools:
-    print("--")
-    print(t.name)
-    print(t.description)
-    print(t.args)
-
+# Inspect the tools
 rendered_tools = render_text_description(tools)
 print(rendered_tools)
